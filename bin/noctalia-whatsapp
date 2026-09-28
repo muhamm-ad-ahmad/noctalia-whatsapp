@@ -1,0 +1,705 @@
+#!/usr/bin/env python3
+"""
+noctalia-whatsapp: Automated Messaging & Auto Call Redialer for WhatsApp Web.
+Tailored for Noctalia Shell on Hyprland (Wayland via wtype, wl-copy, hyprctl, and evdev).
+"""
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+CONFIG_DIR = os.path.expanduser("~/.config/noctalia")
+CALL_CONFIG_FILE = os.path.join(CONFIG_DIR, "whatsapp-call.json")
+LEGACY_CONFIG_FILE = os.path.expanduser("~/.config/omarchy/whatsapp-call.json")
+
+
+def load_call_config() -> dict:
+    """Load calibration coordinates, migrating legacy Omarchy config if present."""
+    defaults = {
+        "call_offset_x": -178,     # Voice call icon (phone) ~178px from right edge
+        "video_offset_x": -240,    # Video call icon (camera) ~240px from right edge
+        "call_offset_y": 35,       # Header vertical offset
+        "end_call_offset_x": -178, # End Call (hang up) button offset
+        "end_call_offset_y": 80,   # End Call vertical offset
+    }
+
+    if os.path.exists(CALL_CONFIG_FILE):
+        try:
+            with open(CALL_CONFIG_FILE, "r") as f:
+                data = json.load(f)
+                defaults.update(data)
+                return defaults
+        except Exception:
+            pass
+
+    # Migrate from old omarchy config if it exists
+    if os.path.exists(LEGACY_CONFIG_FILE):
+        try:
+            with open(LEGACY_CONFIG_FILE, "r") as f:
+                data = json.load(f)
+                defaults.update(data)
+                save_call_config(defaults)
+                return defaults
+        except Exception:
+            pass
+
+    return defaults
+
+
+def save_call_config(data: dict) -> None:
+    """Save calibration coordinates to Noctalia config."""
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    with open(CALL_CONFIG_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def get_whatsapp_window() -> dict | None:
+    """Find the WhatsApp Web window from Hyprland clients."""
+    if not shutil.which("hyprctl"):
+        return None
+    try:
+        res = subprocess.run(["hyprctl", "clients", "-j"], capture_output=True, text=True)
+        if res.returncode == 0 and res.stdout.strip():
+            clients = json.loads(res.stdout)
+            for c in clients:
+                cls = c.get("class", "").lower()
+                title = c.get("title", "").lower()
+                init_cls = c.get("initialClass", "").lower()
+                init_title = c.get("initialTitle", "").lower()
+                if any("whatsapp" in s or "web.whatsapp.com" in s for s in (cls, title, init_cls, init_title)):
+                    return c
+    except Exception:
+        pass
+    return None
+
+
+def focus_whatsapp_hyprland() -> bool:
+    """Attempt to focus the WhatsApp Web window under Hyprland."""
+    if not shutil.which("hyprctl"):
+        return False
+
+    win = get_whatsapp_window()
+    if win and win.get("address"):
+        addr = win["address"]
+        try:
+            res = subprocess.run(
+                ["hyprctl", "dispatch", "focuswindow", f"address:{addr}"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if res.returncode == 0 and "error" not in res.stderr.lower():
+                return True
+        except Exception:
+            pass
+
+    targets = [
+        "class:.*whatsapp.*",
+        "title:.*[Ww]hats[Aa]pp.*",
+        "title:.*web.whatsapp.com.*",
+    ]
+
+    for target in targets:
+        try:
+            res = subprocess.run(
+                ["hyprctl", "dispatch", "focuswindow", target],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if res.returncode == 0 and "error" not in res.stderr.lower():
+                return True
+        except Exception:
+            pass
+
+    return False
+
+
+def click_mouse(x: int, y: int) -> bool:
+    """Move cursor and send native left click via Hyprland + evdev."""
+    # 1. Move cursor
+    subprocess.run(
+        ["hyprctl", "dispatch", "movecursor", f"{x}", f"{y}"],
+        capture_output=True,
+        check=False,
+    )
+    time.sleep(0.08)
+
+    # 2. Left click via evdev
+    try:
+        import evdev
+        from evdev import ecodes
+
+        cap = {
+            ecodes.EV_KEY: [ecodes.BTN_LEFT, ecodes.BTN_RIGHT],
+            ecodes.EV_REL: [ecodes.REL_X, ecodes.REL_Y],
+        }
+        ui = evdev.UInput(cap, name="noctalia-virtual-mouse")
+        time.sleep(0.04)
+        ui.write(ecodes.EV_KEY, ecodes.BTN_LEFT, 1)
+        ui.syn()
+        time.sleep(0.06)
+        ui.write(ecodes.EV_KEY, ecodes.BTN_LEFT, 0)
+        ui.syn()
+        time.sleep(0.04)
+        ui.close()
+        return True
+    except PermissionError:
+        print("\n❌ Permission denied opening /dev/uinput.")
+        print("💡 Solution: Add your user to the 'input' group and ensure udev rules are loaded:")
+        print("   sudo usermod -aG input $USER")
+        print("   echo 'KERNEL==\"uinput\", GROUP=\"input\", MODE=\"0660\"' | sudo tee /etc/udev/rules.d/99-uinput.rules")
+        print("   sudo udevadm control --reload-rules && sudo udevadm trigger")
+        return False
+    except ImportError:
+        print("\n❌ Python 'evdev' module is not installed.")
+        print("💡 Solution: Install python-evdev via your package manager (e.g. sudo pacman -S python-evdev)")
+        return False
+    except Exception as e:
+        print(f"\nevdev click error: {e}")
+        return False
+
+
+def send_message_wayland(message: str) -> bool:
+    """Type text and press Return via wtype."""
+    try:
+        res1 = subprocess.run(["wtype", "--", message], capture_output=True, text=True)
+        if res1.returncode != 0:
+            print(f"\nwtype typing error: {res1.stderr.strip()}")
+            return False
+        time.sleep(0.02)
+        res2 = subprocess.run(["wtype", "-k", "Return"], capture_output=True, text=True)
+        if res2.returncode != 0:
+            print(f"\nwtype Return error: {res2.stderr.strip()}")
+            return False
+        return True
+    except Exception as e:
+        print(f"\nException sending message: {e}")
+        return False
+
+
+def paste_and_send_wayland(text: str) -> bool:
+    """Paste large text via wl-copy and press Return."""
+    try:
+        subprocess.run(["wl-copy", text], check=True)
+        time.sleep(0.1)
+        subprocess.run(["wtype", "-M", "ctrl", "-k", "v", "-m", "ctrl"], check=True)
+        time.sleep(0.15)
+        subprocess.run(["wtype", "-k", "Return"], check=True)
+        return True
+    except Exception as e:
+        print(f"\nException pasting message: {e}")
+        return False
+
+
+def notify(title: str, body: str) -> None:
+    """Send a desktop notification via Noctalia IPC or notify-send."""
+    if shutil.which("noctalia"):
+        try:
+            res = subprocess.run(
+                ["noctalia", "msg", "notification-show", title, body],
+                capture_output=True,
+                check=False,
+            )
+            if res.returncode == 0:
+                return
+        except Exception:
+            pass
+
+    if shutil.which("notify-send"):
+        try:
+            subprocess.run(["notify-send", "-a", "WhatsApp Automation", title, body], check=False)
+        except Exception:
+            pass
+
+
+def dismiss_notifications() -> None:
+    """Dismiss any active desktop notifications so they don't intercept mouse clicks."""
+    if shutil.which("noctalia"):
+        try:
+            subprocess.run(
+                ["noctalia", "msg", "notification-clear-active"],
+                capture_output=True,
+                check=False,
+                timeout=1,
+            )
+        except Exception:
+            pass
+
+
+def check_all_dependencies() -> dict:
+    """Audit system dependencies and permissions required by the plugin."""
+    results = {}
+
+    results["wtype"] = shutil.which("wtype") is not None
+    results["wl_copy"] = shutil.which("wl-copy") is not None
+    results["hyprctl"] = shutil.which("hyprctl") is not None
+    results["python3"] = shutil.which("python3") is not None
+    results["libnotify"] = shutil.which("notify-send") is not None
+
+    # Check python-evdev
+    try:
+        import evdev
+        results["python_evdev"] = True
+    except ImportError:
+        results["python_evdev"] = False
+
+    # Check /dev/uinput access
+    results["uinput_access"] = os.access("/dev/uinput", os.W_OK)
+
+    # Summary
+    results["all_messaging_ok"] = results["wtype"] and results["wl_copy"] and results["hyprctl"]
+    results["all_call_ok"] = results["hyprctl"] and results["python_evdev"] and results["uinput_access"]
+    results["all_ok"] = results["all_messaging_ok"] and results["all_call_ok"]
+
+    return results
+
+
+# ==============================================================================
+# CALIBRATION
+# ==============================================================================
+def run_calibration(target: str = "call"):
+    is_end = (target == "end")
+    title = "End Call (Hang Up) Button" if is_end else "Voice Call Icon"
+    print("=" * 65)
+    print(f" 🎯 WhatsApp Web {title} Calibration")
+    print("=" * 65)
+    print("1. Focusing WhatsApp Web...")
+    dismiss_notifications()
+    focus_whatsapp_hyprland()
+    time.sleep(0.6)
+
+    win = get_whatsapp_window()
+    if not win:
+        print("❌ Could not detect WhatsApp Web window under Hyprland.")
+        print("Please ensure WhatsApp Web is open in your browser or desktop app.")
+        sys.exit(1)
+
+    wx, wy = win["at"][0], win["at"][1]
+    ww, wh = win["size"][0], win["size"][1]
+    print(f"✓ Found WhatsApp Web window at ({wx}, {wy}) size {ww}x{wh}")
+    print("\n👉 INSTRUCTIONS:")
+    if is_end:
+        print("   In WhatsApp Web, ensure a call is active/ringing so the red End Call button is visible.")
+        print("   Move your mouse cursor directly over the red End Call (hang up) button.")
+    else:
+        print("   Move your mouse cursor directly over the Voice Call (phone) icon")
+        print("   in the active WhatsApp chat header.")
+    print("   The script will capture the exact position in 4 seconds...\n")
+
+    for s in range(4, 0, -1):
+        sys.stdout.write(f"\r⏱️  Capturing in {s}s... Keep mouse hovering over {title}! ")
+        sys.stdout.flush()
+        time.sleep(1)
+
+    cursor_res = subprocess.run(["hyprctl", "cursorpos"], capture_output=True, text=True)
+    coords = [int(v.strip()) for v in cursor_res.stdout.split(",")]
+    cx, cy = coords[0], coords[1]
+
+    # Calculate offset relative to top-right of window
+    offset_x = cx - (wx + ww)
+    offset_y = cy - wy
+
+    cfg = load_call_config()
+    if is_end:
+        cfg["end_call_offset_x"] = offset_x
+        cfg["end_call_offset_y"] = offset_y
+    else:
+        cfg["call_offset_x"] = offset_x
+        cfg["call_offset_y"] = offset_y
+    save_call_config(cfg)
+
+    sys.stdout.write("\r" + " " * 80 + "\r")
+    print("=" * 65)
+    print(f"✅ Calibration Successful for {title}!")
+    print(f"   Absolute Position : ({cx}, {cy})")
+    print(f"   Window Offset     : ({offset_x} from right, +{offset_y} from top)")
+    print(f"   Saved to          : {CALL_CONFIG_FILE}")
+    print("=" * 65)
+    notify("WhatsApp Calibrate", f"{title} calibrated ({offset_x}, +{offset_y})")
+
+
+# ==============================================================================
+# AUTO CALL REDIAL
+# ==============================================================================
+def run_auto_redial(attempts: int, timeout: int, delay: int, grace: int, call_type: str = "voice", end_call: bool = True):
+    call_label = "Video Call" if call_type == "video" else "Voice Call"
+    print("=" * 65)
+    print(f" 📞 WhatsApp Auto {call_label} Redialer — Noctalia Shell Plugin")
+    print("=" * 65)
+    print(f"  • Call Type      : {call_label}")
+    print(f"  • Max Attempts   : {'Infinite (until stopped)' if attempts == 0 else f'{attempts} times'}")
+    print(f"  • Ring Timeout   : {timeout}s per call")
+    print(f"  • End Call Action: {'🔴 Hang Up (Click End Call)' if end_call else '⏳ Wait for natural drop'}")
+    print(f"  • Redial Delay   : {delay}s between calls")
+    print(f"  • Grace Period   : {grace}s before 1st call")
+    print("=" * 65)
+    print("👉 Keep WhatsApp Web open with the target contact's chat open.")
+    print("-" * 65)
+
+    focused = focus_whatsapp_hyprland()
+    if focused:
+        print("✓ WhatsApp Web focused.")
+    else:
+        print("ℹ Please ensure WhatsApp Web window is open.")
+
+    if grace > 0:
+        notify("WhatsApp Redial", f"Starting auto {call_label.lower()} redial in {grace}s...")
+        print(f"\n⚠️  Grace period ({grace}s): Check that the contact's chat is open!")
+        for g in range(grace, 0, -1):
+            sys.stdout.write(f"\r⏱️  First call in {g}s... (Press Ctrl+C to cancel) ")
+            sys.stdout.flush()
+            time.sleep(1)
+        sys.stdout.write("\r" + " " * 75 + "\r")
+        print("🚀 Grace period finished. Starting redial loop!\n")
+
+    dismiss_notifications()
+
+    attempt = 1
+    cfg = load_call_config()
+
+    try:
+        while True:
+            if attempts > 0 and attempt > attempts:
+                print(f"\n🎉 Completed all {attempts} redial attempts.")
+                notify("WhatsApp Redial", f"Completed {attempts} redial attempts.")
+                break
+
+            status_str = f"Attempt {attempt}" + (f" of {attempts}" if attempts > 0 else "")
+            print(f"📞 [{status_str}]: Placing {call_label.lower()}...")
+
+            focus_whatsapp_hyprland()
+            time.sleep(0.2)
+            dismiss_notifications()
+            time.sleep(0.05)
+            win = get_whatsapp_window()
+            if not win:
+                print("❌ WhatsApp Web window not found! Aborting.")
+                break
+
+            offset_x = cfg.get("video_offset_x", -240) if call_type == "video" else cfg.get("call_offset_x", -178)
+            call_x = win["at"][0] + win["size"][0] + offset_x
+            call_y = win["at"][1] + cfg.get("call_offset_y", 35)
+
+            if not click_mouse(call_x, call_y):
+                print("❌ Mouse click failed. Please check evdev / permissions.")
+                break
+            print(f"✓ Clicked {call_label} button at ({call_x}, {call_y})")
+
+            # Ringing countdown
+            for r in range(timeout, 0, -1):
+                sys.stdout.write(f"\r🔔 Ringing: {r}s remaining... (Press Ctrl+C to abort) ")
+                sys.stdout.flush()
+                time.sleep(1)
+
+            sys.stdout.write("\r" + " " * 75 + "\r")
+            print(f"⏱️  Ring timeout ({timeout}s) reached.")
+
+            if end_call:
+                focus_whatsapp_hyprland()
+                time.sleep(0.1)
+                dismiss_notifications()
+                time.sleep(0.05)
+                win = get_whatsapp_window()
+                if win:
+                    end_x = win["at"][0] + win["size"][0] + cfg.get("end_call_offset_x", -178)
+                    end_y = win["at"][1] + cfg.get("end_call_offset_y", 80)
+                    print(f"🔴 Hanging up (clicking End Call at {end_x}, {end_y})...")
+                    click_mouse(end_x, end_y)
+                    time.sleep(0.5)
+            else:
+                print("⏳ Waiting for WhatsApp call to end naturally...")
+                time.sleep(0.5)
+
+            attempt += 1
+            if attempts > 0 and attempt > attempts:
+                print(f"\n🎉 Finished maximum attempts ({attempts}).")
+                notify("WhatsApp Redial", f"Finished {attempts} redial attempts.")
+                break
+
+            print(f"⏳ Waiting {delay}s before next call...")
+            for d in range(delay, 0, -1):
+                sys.stdout.write(f"\r⏱️  Next call in {d}s... ")
+                sys.stdout.flush()
+                time.sleep(1)
+            sys.stdout.write("\r" + " " * 75 + "\r\n")
+
+    except KeyboardInterrupt:
+        print("\n\n🛑 Auto redial stopped by user.")
+        notify("WhatsApp Redial", "Auto redial cancelled.")
+        sys.exit(0)
+
+
+# ==============================================================================
+# MESSAGING
+# ==============================================================================
+def run_messaging(args):
+    has_wtype = shutil.which("wtype") is not None
+    if not has_wtype:
+        print("❌ Error: wtype is required for keystroke typing on Wayland.")
+        print("💡 Run 'noctalia-whatsapp install-deps' or install 'wtype' using your package manager.")
+        sys.exit(1)
+
+    print("=" * 65)
+    print("  WhatsApp Scheduled Sender — Noctalia Shell Plugin")
+    print("=" * 65)
+    print(f"  • Message      : {args.message}")
+    print(f"  • Count        : {args.count:,} times")
+    print(f"  • Mode         : {args.mode} ({'separate messages' if args.mode == 'separate' else '1 single message'})")
+    if args.mode == "separate":
+        est_seconds = int(args.count * args.interval)
+        est_mins, est_rem = divmod(est_seconds, 60)
+        print(f"  • Interval     : {args.interval}s per message (~{est_mins}m {est_rem}s estimated)")
+    print(f"  • Countdown    : {args.delay}s ({args.delay // 60}m {args.delay % 60}s)")
+    print(f"  • Grace Period : {args.grace}s (before first message)")
+    print("=" * 65)
+    print("👉 Keep WhatsApp Web open and chat input box focused.")
+    print("-" * 65)
+
+    try:
+        # Phase 1: Countdown
+        for remaining in range(args.delay, 0, -1):
+            mins, secs = divmod(remaining, 60)
+            sys.stdout.write(
+                f"\r⏳ Time remaining: {mins:02d}:{secs:02d} | Press Ctrl+C to cancel... "
+            )
+            sys.stdout.flush()
+            time.sleep(1)
+
+        sys.stdout.write("\r" + " " * 70 + "\r")
+        print("🎯 Countdown finished! Focusing WhatsApp Web...")
+
+        # Phase 2: Focus Window
+        focused = focus_whatsapp_hyprland()
+        if focused:
+            print("✓ WhatsApp Web focused.")
+        else:
+            print("ℹ WhatsApp Web window not detected via Hyprland, using active window.")
+
+        # Phase 3: Grace Period before first message
+        if args.grace > 0:
+            notify("WhatsApp Sender", f"WhatsApp focused! Sending in {args.grace}s (check chat box)...")
+            print(f"\n⚠️  Grace period ({args.grace}s): Check that WhatsApp Web chat input is active!")
+            for g in range(args.grace, 0, -1):
+                sys.stdout.write(
+                    f"\r⏱️  First message sends in {g}s... (Click chat box now | Ctrl+C to cancel) "
+                )
+                sys.stdout.flush()
+                time.sleep(1)
+            sys.stdout.write("\r" + " " * 75 + "\r")
+            print("🚀 Grace period finished. Sending begins!\n")
+        else:
+            time.sleep(0.3)
+
+        # Phase 4: Sending
+        if args.mode == "single":
+            print(f"📦 Assembling single message containing '{args.message}' x {args.count:,}...")
+            combined = (f"{args.message} " * args.count).strip()
+            if shutil.which("wl-copy"):
+                success = paste_and_send_wayland(combined)
+            else:
+                for _ in range(args.count):
+                    subprocess.run(["wtype", "--", f"{args.message} "], check=True)
+                subprocess.run(["wtype", "-k", "Return"], check=True)
+                success = True
+
+            if success:
+                print(f"✅ Successfully sent combined message ({args.count:,} repetitions)!")
+                notify("WhatsApp Sender", f"Sent message with {args.count:,} repetitions.")
+            else:
+                print("❌ Failed to send message.")
+                sys.exit(1)
+
+        else:
+            print(f"📨 Sending {args.count:,} messages... (Press Ctrl+C to stop)")
+            start_time = time.time()
+            sent_count = 0
+
+            for i in range(1, args.count + 1):
+                ok = send_message_wayland(args.message)
+                if not ok:
+                    print(f"\n❌ Error at message {i}. Aborting.")
+                    break
+
+                sent_count = i
+                elapsed = time.time() - start_time
+                pct = (i / args.count) * 100
+                rate = i / elapsed if elapsed > 0 else 0
+
+                sys.stdout.write(
+                    f"\r🚀 Progress: [{i}/{args.count}] ({pct:.1f}%) | {rate:.1f} msg/s | Ctrl+C to stop "
+                )
+                sys.stdout.flush()
+
+                if args.interval > 0:
+                    time.sleep(args.interval)
+
+            total_elapsed = time.time() - start_time
+            print(f"\n\n🎉 Done! Sent {sent_count:,} messages in {total_elapsed:.1f}s.")
+            notify("WhatsApp Sender", f"Finished sending {sent_count:,} messages.")
+
+    except KeyboardInterrupt:
+        print("\n\n🛑 Aborted by user. No further messages sent.")
+        sys.exit(0)
+
+
+def main():
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "check-deps":
+            deps = check_all_dependencies()
+            if "--json" in sys.argv:
+                print(json.dumps(deps, indent=2))
+            else:
+                print("=" * 50)
+                print(" 🔍 Noctalia WhatsApp Dependency Audit")
+                print("=" * 50)
+                print(f"  • wtype (Wayland typing)       : {'✓ Installed' if deps['wtype'] else '❌ Missing'}")
+                print(f"  • wl-clipboard (wl-copy)       : {'✓ Installed' if deps['wl_copy'] else '❌ Missing'}")
+                print(f"  • hyprctl (Hyprland window/IPC): {'✓ Installed' if deps['hyprctl'] else '❌ Missing'}")
+                print(f"  • python3                      : {'✓ Installed' if deps['python3'] else '❌ Missing'}")
+                print(f"  • python-evdev                 : {'✓ Installed' if deps['python_evdev'] else '❌ Missing'}")
+                print(f"  • /dev/uinput write access     : {'✓ OK' if deps['uinput_access'] else '⚠️  Permission Denied'}")
+                print(f"  • libnotify (notify-send)      : {'✓ Installed' if deps['libnotify'] else '❌ Missing'}")
+                print("=" * 50)
+                if deps["all_ok"]:
+                    print("✅ All dependencies satisfied!")
+                else:
+                    print("⚠️  Some dependencies are missing. Run:")
+                    print("    noctalia-whatsapp install-deps")
+            sys.exit(0 if deps["all_ok"] else 1)
+
+        elif sys.argv[1] == "install-deps":
+            script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "install-deps.sh")
+            if os.path.exists(script_path):
+                os.execv("/bin/bash", ["bash", script_path])
+            else:
+                print(f"❌ Installer script not found at {script_path}")
+                sys.exit(1)
+
+        elif sys.argv[1] == "call":
+            call_parser = argparse.ArgumentParser(
+                prog="noctalia-whatsapp call",
+                description="Auto call redialer for WhatsApp Web.",
+            )
+            call_parser.add_argument(
+                "-a", "--attempts",
+                type=int,
+                default=5,
+                help="Number of redial attempts (default: 5, 0 for infinite)",
+            )
+            call_parser.add_argument(
+                "-t", "--timeout",
+                type=int,
+                default=35,
+                help="Ring timeout in seconds per call before redialing (default: 35s)",
+            )
+            call_parser.add_argument(
+                "-d", "--delay",
+                type=int,
+                default=5,
+                help="Pause in seconds between redials (default: 5s)",
+            )
+            call_parser.add_argument(
+                "-g", "--grace",
+                type=int,
+                default=3,
+                help="Grace period in seconds before 1st call (default: 3s)",
+            )
+            call_parser.add_argument(
+                "--call-type",
+                choices=["voice", "video"],
+                default="voice",
+                help="Type of call: 'voice' (default) or 'video'",
+            )
+            call_parser.add_argument(
+                "--end-call",
+                action=argparse.BooleanOptionalAction,
+                default=True,
+                help="Hang up (click End Call button) when ring timeout expires (default: True, use --no-end-call to wait for natural drop)",
+            )
+            call_parser.add_argument(
+                "--calibrate-call",
+                action="store_true",
+                help="Calibrate Voice Call icon position",
+            )
+            call_parser.add_argument(
+                "--calibrate-end",
+                action="store_true",
+                help="Calibrate End Call (hang up) button position",
+            )
+            call_parser.add_argument(
+                "--calibrate",
+                action="store_true",
+                help="Alias for --calibrate-call",
+            )
+            call_args = call_parser.parse_args(sys.argv[2:])
+
+            if call_args.calibrate_end:
+                run_calibration(target="end")
+            elif call_args.calibrate or call_args.calibrate_call:
+                run_calibration(target="call")
+            else:
+                run_auto_redial(
+                    attempts=call_args.attempts,
+                    timeout=call_args.timeout,
+                    delay=call_args.delay,
+                    grace=call_args.grace,
+                    call_type=call_args.call_type,
+                    end_call=call_args.end_call,
+                )
+            return
+
+    # Default: message mode
+    parser = argparse.ArgumentParser(
+        prog="noctalia-whatsapp",
+        description="Scheduled automated messaging for WhatsApp Web on Noctalia Shell (Hyprland / Wayland)."
+    )
+    parser.add_argument(
+        "-d", "--delay",
+        type=int,
+        default=120,
+        help="Initial countdown delay in seconds before activating (default: 120 = 2 minutes)",
+    )
+    parser.add_argument(
+        "-g", "--grace",
+        type=int,
+        default=5,
+        help="Grace period in seconds after focusing WhatsApp and before sending 1st message (default: 5s)",
+    )
+    parser.add_argument(
+        "-m", "--message",
+        type=str,
+        default="-100",
+        help='Message text to send (default: "-100")',
+    )
+    parser.add_argument(
+        "-c", "--count",
+        type=int,
+        default=1300,
+        help="Number of times to send the message (default: 1300)",
+    )
+    parser.add_argument(
+        "-i", "--interval",
+        type=float,
+        default=0.08,
+        help="Delay in seconds between repeated messages (default: 0.08s)",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["separate", "single"],
+        default="separate",
+        help=(
+            "'separate' (default): sends individual messages. "
+            "'single': combines text repeated N times into 1 message and sends once."
+        ),
+    )
+    args = parser.parse_args()
+    run_messaging(args)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,56 @@
+id           = "muhamm-ad-ahmad/whatsapp"
+name         = "WhatsApp Automation"
+version      = "1.0.0"
+plugin_api   = 24
+author       = "Muhammad Ahmad"
+license      = "MIT"
+icon         = "brand-whatsapp"
+description  = "Scheduled messaging and auto call redialer for WhatsApp Web on Hyprland."
+dependencies = ["wtype", "wl-clipboard", "python", "python-evdev", "libnotify"]
+tags         = ["whatsapp", "automation", "messaging", "hyprland", "utility"]
+
+[[setting]]
+key             = "terminal_cmd"
+type            = "string"
+label_key       = "settings.terminal_cmd.label"
+description_key = "settings.terminal_cmd.description"
+default         = ""
+
+[[widget]]
+id    = "whatsapp"
+entry = "widget.luau"
+
+  [widget.actions]
+  left = "none"
+
+  [[widget.setting]]
+  key             = "glyph"
+  type            = "glyph"
+  label_key       = "settings.glyph.label"
+  description_key = "settings.glyph.description"
+  default         = "brand-whatsapp"
+
+  [[widget.setting]]
+  key             = "show_status"
+  type            = "bool"
+  label_key       = "settings.show_status.label"
+  description_key = "settings.show_status.description"
+  default         = true
+
+[[panel]]
+id                       = "panel"
+entry                    = "panel.luau"
+width                    = 470
+height                   = 740
+placement                = "attached"
+position                 = "auto"
+open_near_click          = true
+dismiss_on_outside_click = true
+
+[[service]]
+id    = "service"
+entry = "service.luau"
+
+[[shortcut]]
+id    = "shortcut"
+entry = "shortcut.luau"
