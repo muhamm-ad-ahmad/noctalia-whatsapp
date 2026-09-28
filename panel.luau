@@ -25,11 +25,11 @@ local deps = {
 local hasMissingDeps = false
 
 -- Form state: Messaging
-local messageText = "-100"
-local countText = "1300"
-local delayText = "120"
+local messageText = ""
+local countText = "0"
+local delayText = "5"
 local graceText = "5"
-local intervalText = "0.08"
+local intervalText = "0.15"
 local selectedMode = "separate" -- "separate" | "single"
 
 -- Form keys for programmatically updating input fields
@@ -127,11 +127,11 @@ function setMode(mode)
 end
 
 function launchMessageTerminal()
-  local msgEsc = (messageText or "-100"):gsub("'", "'\\''")
-  local d = tonumber(delayText) or 120
+  local msgEsc = (messageText or ""):gsub("'", "'\\''")
+  local d = tonumber(delayText) or 5
   local g = tonumber(graceText) or 5
-  local c = tonumber(countText) or 1300
-  local i = tonumber(intervalText) or 0.08
+  local c = tonumber(countText) or 0
+  local i = tonumber(intervalText) or 0.15
   local m = selectedMode or "separate"
 
   local cmd = `python3 "{binPath}" --message '{msgEsc}' --delay {d} --grace {g} --count {c} --interval {i} --mode {m}`
@@ -139,11 +139,11 @@ function launchMessageTerminal()
 end
 
 function startMessageBackground()
-  local msgEsc = (messageText or "-100"):gsub("'", "'\\''")
-  local d = tonumber(delayText) or 120
+  local msgEsc = (messageText or ""):gsub("'", "'\\''")
+  local d = tonumber(delayText) or 5
   local g = tonumber(graceText) or 5
-  local c = tonumber(countText) or 1300
-  local i = tonumber(intervalText) or 0.08
+  local c = tonumber(countText) or 0
+  local i = tonumber(intervalText) or 0.15
   local m = selectedMode or "separate"
 
   local cmd = `python3 "{binPath}" --message '{msgEsc}' --delay {d} --grace {g} --count {c} --interval {i} --mode {m}`

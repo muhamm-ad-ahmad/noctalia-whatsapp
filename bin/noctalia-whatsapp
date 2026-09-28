@@ -444,6 +444,10 @@ def run_messaging(args):
         print("💡 Run 'noctalia-whatsapp install-deps' or install 'wtype' using your package manager.")
         sys.exit(1)
 
+    if args.count <= 0:
+        print("⚠️ Repetitions count is 0. Please specify a count greater than 0 (--count / -c).")
+        sys.exit(0)
+
     print("=" * 65)
     print("  WhatsApp Scheduled Sender — Noctalia Shell Plugin")
     print("=" * 65)
@@ -661,8 +665,8 @@ def main():
     parser.add_argument(
         "-d", "--delay",
         type=int,
-        default=120,
-        help="Initial countdown delay in seconds before activating (default: 120 = 2 minutes)",
+        default=5,
+        help="Initial countdown delay in seconds before activating (default: 5s)",
     )
     parser.add_argument(
         "-g", "--grace",
@@ -673,20 +677,20 @@ def main():
     parser.add_argument(
         "-m", "--message",
         type=str,
-        default="-100",
-        help='Message text to send (default: "-100")',
+        default="",
+        help='Message text to send (default: "")',
     )
     parser.add_argument(
         "-c", "--count",
         type=int,
-        default=1300,
-        help="Number of times to send the message (default: 1300)",
+        default=0,
+        help="Number of times to send the message (default: 0)",
     )
     parser.add_argument(
         "-i", "--interval",
         type=float,
-        default=0.08,
-        help="Delay in seconds between repeated messages (default: 0.08s)",
+        default=0.15,
+        help="Delay in seconds between repeated messages (default: 0.15s = Safe)",
     )
     parser.add_argument(
         "--mode",

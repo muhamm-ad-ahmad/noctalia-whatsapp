@@ -11,11 +11,11 @@ An official-grade plugin for **[Noctalia Shell](https://noctalia.dev)** on **Hyp
 ## ✨ Features
 
 ### 💬 Scheduled & Repeated Messaging
-- **Custom Message Text**: Send any text or numbers (default: `-100`).
+- **Custom Message Text**: Specify any message text to send.
 - **Repetitions (Count)**: Set any count (e.g. 10, 100, 500, 1300, or custom).
-- **Countdown Delay**: Configurable initial wait before activating WhatsApp (e.g. 5s test, 30s, 1m, 2m, 5m).
-- **Grace Period**: Time to verify WhatsApp input focus after auto-focusing before typing begins (0s, 3s, 5s, 10s).
-- **Keystroke Interval**: Control pacing between messages (Fast `0.04s`, Normal `0.08s`, Safe `0.15s`).
+- **Countdown Delay**: Configurable initial wait before activating WhatsApp (default: 5s test, or 30s, 1m, 2m, 5m).
+- **Grace Period**: Time to verify WhatsApp input focus after auto-focusing before typing begins (default: 5s, or 0s, 3s, 10s).
+- **Keystroke Interval**: Control pacing between messages (default: Safe `0.15s`, Normal `0.08s`, Fast `0.04s`).
 - **Modes**:
   - **📨 Separate Messages**: Types and sends each repetition as an individual message via `wtype`.
   - **📦 Single Message**: Assembles text repeated $N$ times and pastes via `wl-copy` into a single message.
@@ -125,11 +125,11 @@ noctalia-whatsapp install-deps
 
 ### Messaging Automation
 ```bash
-# Default: sends "-100" repeated 1300 times after a 2-minute countdown
-noctalia-whatsapp
+# Custom message, count, and delays (default: 5s countdown, 5s grace, 0.15s safe interval)
+noctalia-whatsapp --message "Hey there!" --count 10
 
-# Custom message, count, and delays
-noctalia-whatsapp --message "Hey there!" --count 10 --delay 10 --grace 3 --interval 0.08
+# Custom parameters
+noctalia-whatsapp --message "Hello" --count 50 --delay 10 --grace 3 --interval 0.08
 
 # Single combined message mode (instant paste & send)
 noctalia-whatsapp --message "Reminder!" --count 50 --delay 5 --mode single
