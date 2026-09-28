@@ -15,7 +15,6 @@
   "ui.message_text_placeholder": "Text to send...",
   "ui.repetitions_header": "REPETITIONS (COUNT)",
   "ui.countdown_delay_header": "COUNTDOWN DELAY (SECONDS)",
-  "ui.grace_period_header": "GRACE PERIOD BEFORE 1ST MESSAGE (SECONDS)",
   "ui.interval_header": "INTERVAL BETWEEN MESSAGES (SECONDS)",
   "ui.mode_header": "MODE",
   "ui.mode_separate": "📨 Separate Messages",
@@ -33,7 +32,6 @@
   "ui.action_hangup": "🔴 Hang Up & Redial",
   "ui.action_natural": "⏳ Auto-Drop Naturally",
   "ui.pause_between_calls_header": "PAUSE BETWEEN CALLS (SECONDS)",
-  "ui.grace_period_call_header": "GRACE PERIOD BEFORE 1ST CALL (SECONDS)",
   "ui.calibration_header": "POSITION CALIBRATION (HOVER 4s)",
   "ui.btn_calibrate_call": "🎯 Calibrate Call Icon",
   "ui.btn_calibrate_end": "🔴 Calibrate End Call Button",
@@ -46,6 +44,6 @@
   "ui.btn_refresh_deps": "🔄 Refresh Status",
   "ui.missing_deps_banner": "⚠️ Missing dependencies detected. Some features may not work.",
   "ui.all_deps_ok": "✓ All required dependencies and permissions are satisfied.",
-  "ui.note_messages": "💡 Note: Automatically focuses WhatsApp Web and provides a grace period to verify input focus.",
+  "ui.note_messages": "💡 Note: Automatically focuses WhatsApp Web when countdown finishes and begins sending.",
   "ui.note_redial": "💡 Note: Keep WhatsApp Web open with target chat open. Voice/Video calls are clicked natively."
 }

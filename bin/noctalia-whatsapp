@@ -326,7 +326,7 @@ def run_calibration(target: str = "call"):
 # ==============================================================================
 # AUTO CALL REDIAL
 # ==============================================================================
-def run_auto_redial(attempts: int, timeout: int, delay: int, grace: int, call_type: str = "voice", end_call: bool = True):
+def run_auto_redial(attempts: int, timeout: int, delay: int, call_type: str = "voice", end_call: bool = True):
     call_label = "Video Call" if call_type == "video" else "Voice Call"
     print("=" * 65)
     print(f" 📞 WhatsApp Auto {call_label} Redialer — Noctalia Shell Plugin")
@@ -336,7 +336,6 @@ def run_auto_redial(attempts: int, timeout: int, delay: int, grace: int, call_ty
     print(f"  • Ring Timeout   : {timeout}s per call")
     print(f"  • End Call Action: {'🔴 Hang Up (Click End Call)' if end_call else '⏳ Wait for natural drop'}")
     print(f"  • Redial Delay   : {delay}s between calls")
-    print(f"  • Grace Period   : {grace}s before 1st call")
     print("=" * 65)
     print("👉 Keep WhatsApp Web open with the target contact's chat open.")
     print("-" * 65)
@@ -347,16 +346,7 @@ def run_auto_redial(attempts: int, timeout: int, delay: int, grace: int, call_ty
     else:
         print("ℹ Please ensure WhatsApp Web window is open.")
 
-    if grace > 0:
-        notify("WhatsApp Redial", f"Starting auto {call_label.lower()} redial in {grace}s...")
-        print(f"\n⚠️  Grace period ({grace}s): Check that the contact's chat is open!")
-        for g in range(grace, 0, -1):
-            sys.stdout.write(f"\r⏱️  First call in {g}s... (Press Ctrl+C to cancel) ")
-            sys.stdout.flush()
-            time.sleep(1)
-        sys.stdout.write("\r" + " " * 75 + "\r")
-        print("🚀 Grace period finished. Starting redial loop!\n")
-
+    time.sleep(0.3)
     dismiss_notifications()
 
     attempt = 1
@@ -459,7 +449,6 @@ def run_messaging(args):
         est_mins, est_rem = divmod(est_seconds, 60)
         print(f"  • Interval     : {args.interval}s per message (~{est_mins}m {est_rem}s estimated)")
     print(f"  • Countdown    : {args.delay}s ({args.delay // 60}m {args.delay % 60}s)")
-    print(f"  • Grace Period : {args.grace}s (before first message)")
     print("=" * 65)
     print("👉 Keep WhatsApp Web open and chat input box focused.")
     print("-" * 65)
@@ -484,20 +473,7 @@ def run_messaging(args):
         else:
             print("ℹ WhatsApp Web window not detected via Hyprland, using active window.")
 
-        # Phase 3: Grace Period before first message
-        if args.grace > 0:
-            notify("WhatsApp Sender", f"WhatsApp focused! Sending in {args.grace}s (check chat box)...")
-            print(f"\n⚠️  Grace period ({args.grace}s): Check that WhatsApp Web chat input is active!")
-            for g in range(args.grace, 0, -1):
-                sys.stdout.write(
-                    f"\r⏱️  First message sends in {g}s... (Click chat box now | Ctrl+C to cancel) "
-                )
-                sys.stdout.flush()
-                time.sleep(1)
-            sys.stdout.write("\r" + " " * 75 + "\r")
-            print("🚀 Grace period finished. Sending begins!\n")
-        else:
-            time.sleep(0.3)
+        time.sleep(0.3)
 
         # Phase 4: Sending
         if args.mode == "single":
@@ -608,12 +584,6 @@ def main():
                 help="Pause in seconds between redials (default: 5s)",
             )
             call_parser.add_argument(
-                "-g", "--grace",
-                type=int,
-                default=3,
-                help="Grace period in seconds before 1st call (default: 3s)",
-            )
-            call_parser.add_argument(
                 "--call-type",
                 choices=["voice", "video"],
                 default="voice",
@@ -651,7 +621,6 @@ def main():
                     attempts=call_args.attempts,
                     timeout=call_args.timeout,
                     delay=call_args.delay,
-                    grace=call_args.grace,
                     call_type=call_args.call_type,
                     end_call=call_args.end_call,
                 )
@@ -667,12 +636,6 @@ def main():
         type=int,
         default=5,
         help="Initial countdown delay in seconds before activating (default: 5s)",
-    )
-    parser.add_argument(
-        "-g", "--grace",
-        type=int,
-        default=5,
-        help="Grace period in seconds after focusing WhatsApp and before sending 1st message (default: 5s)",
     )
     parser.add_argument(
         "-m", "--message",

@@ -28,7 +28,6 @@ local hasMissingDeps = false
 local messageText = ""
 local countText = "0"
 local delayText = "5"
-local graceText = "5"
 local intervalText = "0.15"
 local selectedMode = "separate" -- "separate" | "single"
 
@@ -36,7 +35,6 @@ local selectedMode = "separate" -- "separate" | "single"
 local msgKey = 0
 local countKey = 0
 local delayKey = 0
-local graceKey = 0
 local intervalKey = 0
 
 -- Form state: Auto Call Redial
@@ -45,13 +43,11 @@ local attemptsText = "5"
 local timeoutText = "35"
 local endCallOnTimeout = true
 local pauseText = "5"
-local callGraceText = "3"
 
 -- Redial form keys
 local attemptsKey = 0
 local timeoutKey = 0
 local pauseKey = 0
-local callGraceKey = 0
 
 local render
 
@@ -101,16 +97,6 @@ function setDelay(val)
   render()
 end
 
-function onGraceChange(val)
-  graceText = val
-end
-
-function setGrace(val)
-  graceText = tostring(val)
-  graceKey = graceKey + 1
-  render()
-end
-
 function onIntervalChange(val)
   intervalText = val
 end
@@ -129,24 +115,22 @@ end
 function launchMessageTerminal()
   local msgEsc = (messageText or ""):gsub("'", "'\\''")
   local d = tonumber(delayText) or 5
-  local g = tonumber(graceText) or 5
   local c = tonumber(countText) or 0
   local i = tonumber(intervalText) or 0.15
   local m = selectedMode or "separate"
 
-  local cmd = `python3 "{binPath}" --message '{msgEsc}' --delay {d} --grace {g} --count {c} --interval {i} --mode {m}`
+  local cmd = `python3 "{binPath}" --message '{msgEsc}' --delay {d} --count {c} --interval {i} --mode {m}`
   runTerminalCommand(cmd)
 end
 
 function startMessageBackground()
   local msgEsc = (messageText or ""):gsub("'", "'\\''")
   local d = tonumber(delayText) or 5
-  local g = tonumber(graceText) or 5
   local c = tonumber(countText) or 0
   local i = tonumber(intervalText) or 0.15
   local m = selectedMode or "separate"
 
-  local cmd = `python3 "{binPath}" --message '{msgEsc}' --delay {d} --grace {g} --count {c} --interval {i} --mode {m}`
+  local cmd = `python3 "{binPath}" --message '{msgEsc}' --delay {d} --count {c} --interval {i} --mode {m}`
   noctalia.runAsync(cmd)
   noctalia.state.set("whatsapp.cmd", "STARTED_MESSAGES_BG")
   noctalia.notify(noctalia.tr("name"), "Started messaging automation in background.")
@@ -199,25 +183,14 @@ function setPause(val)
   render()
 end
 
-function onCallGraceChange(val)
-  callGraceText = val
-end
-
-function setCallGrace(val)
-  callGraceText = tostring(val)
-  callGraceKey = callGraceKey + 1
-  render()
-end
-
 function launchRedialTerminal()
   local ct = selectedCallType or "voice"
   local a = tonumber(attemptsText) or 5
   local t = tonumber(timeoutText) or 35
   local d = tonumber(pauseText) or 5
-  local g = tonumber(callGraceText) or 3
   local endFlag = endCallOnTimeout and "--end-call" or "--no-end-call"
 
-  local cmd = `python3 "{binPath}" call --call-type {ct} --attempts {a} --timeout {t} --delay {d} --grace {g} {endFlag}`
+  local cmd = `python3 "{binPath}" call --call-type {ct} --attempts {a} --timeout {t} --delay {d} {endFlag}`
   runTerminalCommand(cmd)
 end
 
@@ -226,10 +199,9 @@ function startRedialBackground()
   local a = tonumber(attemptsText) or 5
   local t = tonumber(timeoutText) or 35
   local d = tonumber(pauseText) or 5
-  local g = tonumber(callGraceText) or 3
   local endFlag = endCallOnTimeout and "--end-call" or "--no-end-call"
 
-  local cmd = `python3 "{binPath}" call --call-type {ct} --attempts {a} --timeout {t} --delay {d} --grace {g} {endFlag}`
+  local cmd = `python3 "{binPath}" call --call-type {ct} --attempts {a} --timeout {t} --delay {d} {endFlag}`
   noctalia.runAsync(cmd)
   noctalia.state.set("whatsapp.cmd", "STARTED_REDIAL_BG")
   noctalia.notify(noctalia.tr("name"), "Started auto call redialer in background.")
@@ -354,25 +326,7 @@ render = function()
       }),
     }))
 
-    -- 4. Grace Period
-    table.insert(scrollItems, ui.column({ gap = 6 }, {
-      ui.label({ text = noctalia.tr("ui.grace_period_header"), fontSize = 11, fontWeight = "bold", color = "outline" }),
-      ui.row({ gap = 6, align = "center" }, {
-        ui.input({
-          key = "grace-" .. graceKey,
-          value = graceText,
-          width = 80,
-          controlSize = "sm",
-          onChange = "onGraceChange",
-        }),
-        ui.button({ text = "0s", controlSize = "sm", selected = graceText == "0", tooltip = "Instant", onClick = function() setGrace(0) end }),
-        ui.button({ text = "3s", controlSize = "sm", selected = graceText == "3", onClick = function() setGrace(3) end }),
-        ui.button({ text = "5s", controlSize = "sm", selected = graceText == "5", onClick = function() setGrace(5) end }),
-        ui.button({ text = "10s", controlSize = "sm", selected = graceText == "10", onClick = function() setGrace(10) end }),
-      }),
-    }))
-
-    -- 5. Keystroke Interval
+    -- 4. Keystroke Interval
     table.insert(scrollItems, ui.column({ gap = 6 }, {
       ui.label({ text = noctalia.tr("ui.interval_header"), fontSize = 11, fontWeight = "bold", color = "outline" }),
       ui.row({ gap = 6, align = "center" }, {
@@ -553,24 +507,7 @@ render = function()
       }),
     }))
 
-    -- 5. Grace Period
-    table.insert(scrollItems, ui.column({ gap = 6 }, {
-      ui.label({ text = noctalia.tr("ui.grace_period_call_header"), fontSize = 11, fontWeight = "bold", color = "outline" }),
-      ui.row({ gap = 6, align = "center" }, {
-        ui.input({
-          key = "cgrace-" .. callGraceKey,
-          value = callGraceText,
-          width = 80,
-          controlSize = "sm",
-          onChange = "onCallGraceChange",
-        }),
-        ui.button({ text = "0s", controlSize = "sm", selected = callGraceText == "0", onClick = function() setCallGrace(0) end }),
-        ui.button({ text = "3s", controlSize = "sm", selected = callGraceText == "3", onClick = function() setCallGrace(3) end }),
-        ui.button({ text = "5s", controlSize = "sm", selected = callGraceText == "5", onClick = function() setCallGrace(5) end }),
-      }),
-    }))
-
-    -- 6. Position Calibration
+    -- 5. Position Calibration
     table.insert(scrollItems, ui.column({ gap = 6 }, {
       ui.label({ text = noctalia.tr("ui.calibration_header"), fontSize = 11, fontWeight = "bold", color = "outline" }),
       ui.row({ gap = 8 }, {
